@@ -53,3 +53,42 @@ $GOPATH/bin/server
 
 The default MQTT (TCP) port is `:1883`. You can now connect with any MQTT
 client.
+
+## Benchmark
+
+To run the benchmark tests, use:
+
+```bash
+npm run test -- -g bench -p 1883 -c 100 -l 10
+```
+
+Parameter |
+--|----
+-g | Tests to run. `bench` means 'benchmark tests'
+-p | Server Port. Default: 1883
+-c | Total number of packages to send. Default: 100
+-l | Number of packages to send concurrently. Default: 10
+
+### Results
+
+Benchmark results depend on your system and configration!
+
+The following results have been recorded with a Windows 10 x64 machine.
+
+*Go MQTT-Server:*
+
+```
+[Bench] Network: single publisher -> single subscriber
+[Bench] Sending 10000 packages, 10 concurrent ..
+[Bench] Time delta: 642.22588 ms
+[Bench] Msg/Sec: 15570.845572277469 Msg/s
+```
+
+*[Eclipse Mosquitto MQTT Broker](https://mosquitto.org/):*
+
+```
+[Bench] Network: single publisher -> single subscriber
+[Bench] Sending 10000 packages, 10 concurrent ..
+[Bench] Time delta: 645.351073 ms
+[Bench] Msg/Sec: 15495.441812025932 Msg/s
+```
