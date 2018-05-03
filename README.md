@@ -62,7 +62,7 @@ To run the benchmark tests, use:
 npm run test -- -g bench -p 1883 -c 100 -l 10
 ```
 
-Parameter |
+Parameter | Description
 --|----
 -g | Tests to run. `bench` means 'benchmark tests'
 -p | Server Port. Default: 1883
