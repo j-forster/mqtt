@@ -1,15 +1,16 @@
 package main
 
 import (
-	"github.com/j-forster/mqtt"
 	"log"
 	"net"
+
+	"github.com/j-forster/mqtt"
 	// "net/http"
 	//  _ "net/http/pprof"
 	"time"
 )
 
-func Server(address string) (*mqtt.Server) {
+func Server(address string) *mqtt.Server {
 
 	tcp, err := net.Listen("tcp", address)
 	if err != nil {
@@ -26,7 +27,7 @@ func Server(address string) (*mqtt.Server) {
 
 	go func() {
 
-	  for ;; {
+		for {
 
 			conn, err := tcp.Accept()
 			if err == nil {
@@ -35,6 +36,7 @@ func Server(address string) (*mqtt.Server) {
 				go mqtt.Join(conn, server, server)
 			} else {
 
+				log.Fatal(err)
 				break
 			}
 		}
@@ -42,7 +44,7 @@ func Server(address string) (*mqtt.Server) {
 		log.Println("Bye!")
 	}()
 
-	return server;
+	return server
 }
 
 func main() {
