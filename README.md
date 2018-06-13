@@ -3,6 +3,8 @@
 This repo is a implementation of the [MQTT Protocol](http://docs.oasis-open.org/mqtt/mqtt/v3.1.1/os/mqtt-v3.1.1-os.html)
 for the [Go Programming Language](https://golang.org/).
 
+[![GoDoc](https://godoc.org/github.com/j-forster/mqtt?status.svg)](https://godoc.org/github.com/j-forster/mqtt)
+
 ## What is MQTT?
 
 ```
