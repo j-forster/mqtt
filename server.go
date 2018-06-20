@@ -1,15 +1,15 @@
 package mqtt
 
 import (
-	"net"
-	"log"
-	"strings"
 	"io"
+	"net"
+	"strings"
+
 	"github.com/j-forster/mqtt/tools"
 )
 
 type SubscriptionRequest struct {
-	subs *Subscription
+	subs  *Subscription
 	topic string
 }
 
@@ -20,29 +20,30 @@ const (
 
 type SubscriptionChange struct {
 	action int
-	subs *Subscription
-	topic string
+	subs   *Subscription
+	topic  string
 }
 
 type Server struct {
 
 	//subsReq chan SubscriptionRequest
 	//unsubs chan *Subscription
-	state int
-	closer io.Closer
+	state    int
+	closer   io.Closer
 	sigclose chan (struct{})
-	subs chan SubscriptionChange
-	pub chan *Message
-	topics *Topic
+	subs     chan SubscriptionChange
+	pub      chan *Message
+	topics   *Topic
+	handler  Handler
 }
 
-
-func NewServer(closer io.Closer) (*Server) {
+func NewServer(closer io.Closer, handler Handler) *Server {
 
 	svr := new(Server)
 	//svr.subsReq = make(chan SubscriptionRequest)
 	//svr.unsubs = make(chan *Subscription)
-	svr.closer = closer;
+	svr.closer = closer
+	svr.handler = handler
 	svr.sigclose = make(chan struct{})
 	svr.subs = make(chan SubscriptionChange)
 	svr.pub = make(chan *Message)
@@ -55,30 +56,44 @@ func (svr *Server) Alive() bool {
 	return svr.state != CLOSING && svr.state != CLOSED
 }
 
-func (svr *Server) Publish(msg *Message) {
+func (svr *Server) Publish(ctx *Context, msg *Message) {
 
-	if ! svr.Alive() {
+	if !svr.Alive() {
 		return
 	}
 
-	svr.pub <- msg
+	var err error = nil
+	if svr.handler != nil {
+		err = svr.handler.Publish(ctx, msg)
+	}
+	if err == nil {
+
+		svr.pub <- msg
+	}
 }
 
-func (svr *Server) Subscribe(ctx *Context, topic string, qos byte) (*Subscription){
+func (svr *Server) Subscribe(ctx *Context, topic string, qos byte) *Subscription {
 
-	if ! svr.Alive() {
+	if !svr.Alive() {
 		return nil
 	}
 
-	subs := NewSubscription(ctx, qos)
-	svr.subs <- SubscriptionChange{CREATE, subs, topic}
-	return subs
-}
+	var err error = nil
+	if svr.handler != nil {
+		err = svr.handler.Subscribe(ctx, topic, qos)
+	}
+	if err == nil {
 
+		subs := NewSubscription(ctx, qos)
+		svr.subs <- SubscriptionChange{CREATE, subs, topic}
+		return subs
+	}
+	return nil
+}
 
 func (svr *Server) Unsubscribe(subs *Subscription) {
 
-	if ! svr.Alive() {
+	if !svr.Alive() {
 		return
 	}
 
@@ -87,17 +102,17 @@ func (svr *Server) Unsubscribe(subs *Subscription) {
 
 func (svr *Server) Run() {
 
-	RUN:
+RUN:
 	for {
 		select {
-		case <- svr.sigclose:
+		case <-svr.sigclose:
 
 			close(svr.subs)
 			close(svr.pub)
 
 			SYSALL := []string{"$SYS", "all"}
 			subs := svr.topics.Find(SYSALL)
-			for ;subs != nil; subs = subs.next {
+			for ; subs != nil; subs = subs.next {
 
 				subs.ctx.Close()
 			}
@@ -119,18 +134,21 @@ func (svr *Server) Run() {
 
 		case msg := <-svr.pub:
 
-			if msg.topic == "$SYS/close" {
+			if msg.Topic == "$SYS/close" {
 				svr.Close()
 
 			} else {
 
-				log.Printf("Publish: %s %q", msg.topic, string(msg.buf))
-				svr.topics.Publish(strings.Split(msg.topic, "/"), msg)
+				// n := len(msg.buf)
+				// if n > 30 {
+				// 	n = 30
+				// }
+				// log.Printf("Publish: %s %q", msg.topic, string(msg.buf[:n]))
+				svr.topics.Publish(strings.Split(msg.Topic, "/"), msg)
 			}
 		}
 	}
 }
-
 
 func (svr *Server) Close() {
 
@@ -144,12 +162,25 @@ func (svr *Server) Close() {
 	}
 }
 
+func (svr *Server) Serve(rwc io.ReadWriteCloser) {
 
-func Join(conn net.Conn, p Publisher, s SubscriptionHandler) {
+	// uconn := tools.Unblock(rwc)
+
+	ctx := NewContext(rwc, rwc, svr)
+	defer ctx.Close()
+
+	// ctx.Subscribe("$SYS/all", 0)
+
+	for ctx.Alive() {
+		ctx.Read(rwc)
+	}
+}
+
+func Join(conn net.Conn, server *Server) {
 
 	uconn := tools.Unblock(conn)
 
-	ctx := NewContext(uconn, uconn, p, s)
+	ctx := NewContext(uconn, uconn, server)
 	defer ctx.Close()
 
 	ctx.Subscribe("$SYS/all", 0)
@@ -157,4 +188,29 @@ func Join(conn net.Conn, p Publisher, s SubscriptionHandler) {
 	for ctx.Alive() {
 		ctx.Read(conn)
 	}
+}
+
+func ListenAndServe(addr string, handler Handler) error {
+
+	tcp, err := net.Listen("tcp", addr)
+	if err != nil {
+		return err
+	}
+
+	server := NewServer(tcp, handler)
+	go server.Run()
+
+	for {
+
+		conn, err := tcp.Accept()
+		if err == nil {
+
+			go server.Serve(conn)
+		} else {
+
+			return err
+		}
+	}
+
+	return nil
 }

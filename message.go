@@ -58,9 +58,9 @@ var messageType = [...]string{"reserved", "CONNECT", "CONNACK", "PUBLISH",
 ///////////////////////////////////////////////////////////////////////////////
 
 type Message struct {
-	topic  string
-	buf    []byte
-	qos    byte
+	Topic  string
+	Buf    []byte
+	QoS    byte
 	retain bool
 }
 
@@ -165,12 +165,12 @@ func (ctx *Context) Read(reader io.Reader) {
 		return
 	}
 
-  log.Printf("Message: %s (length:%d qos:%d dup:%t retain:%t)",
-    messageType[fh.mtype],
-    fh.length,
-    fh.qos,
-    fh.dup,
-    fh.retain)
+	// log.Printf("Message: %s (length:%d qos:%d dup:%t retain:%t)",
+	//   messageType[fh.mtype],
+	//   fh.length,
+	//   fh.qos,
+	//   fh.dup,
+	//   fh.retain)
 
 	switch fh.mtype {
 	case CONNECT:
@@ -229,10 +229,10 @@ func (ctx *Context) ReadConnectMessage(reader io.Reader, fh *FixedHeader, buf []
 	connFlags := buf[0]
 	// log.Printf("Connection Flags: %d", connFlags)
 
-	cleanSession := connFlags&0x02 != 0
-	if cleanSession {
-		log.Println("Clean Session: true")
-	}
+	// cleanSession := connFlags&0x02 != 0
+	// if cleanSession {
+	// 	log.Println("Clean Session: true")
+	// }
 	willFlag := connFlags&0x04 != 0
 	willQoS := connFlags & 0x18 >> 3
 	willRetain := connFlags&0x20 != 0
@@ -247,14 +247,14 @@ func (ctx *Context) ReadConnectMessage(reader io.Reader, fh *FixedHeader, buf []
 		ctx.Fail(IncompleteMessage)
 		return
 	}
-	keepAliveTimer := int(buf[0])<<8 + int(buf[1])
-	log.Printf("KeepAlive Timer: %d", keepAliveTimer)
+	// keepAliveTimer := int(buf[0])<<8 + int(buf[1])
+	// log.Printf("KeepAlive Timer: %d", keepAliveTimer)
 	// TODO set SetDeadline() to conn
 	buf = buf[2:]
 
 	//
 
-	l, ctx.clientID = readString(buf)
+	l, ctx.ClientID = readString(buf)
 	if l == 0 {
 		ctx.Fail(IncompleteMessage)
 		return
@@ -274,32 +274,33 @@ func (ctx *Context) ReadConnectMessage(reader io.Reader, fh *FixedHeader, buf []
 		var will Message
 
 		will.retain = willRetain
-		will.qos = willQoS
+		will.QoS = willQoS
 
-		l, will.topic = readString(buf)
+		l, will.Topic = readString(buf)
 		if l == 0 {
 			ctx.Fail(IncompleteMessage)
 			return
 		}
 		buf = buf[l:]
 
-		l, will.buf = readBytes(buf)
+		l, will.Buf = readBytes(buf)
 		if l == 0 {
 			ctx.Fail(IncompleteMessage)
 			return
 		}
 
-		log.Printf("Will: topic:%q qos:%d %q\n", will.topic, will.qos, will.buf)
+		log.Printf("Will: topic:%q qos:%d %q\n", will.Topic, will.QoS, will.Buf)
 
-		ctx.will = &will
+		ctx.Will = &will
 		buf = buf[l:]
 	}
 
 	//
 
+	var username, password string
+
 	if usernameFlag {
 
-		var username, password string
 		l, username = readString(buf)
 		if l == 0 {
 			ctx.Fail(IncompleteMessage)
@@ -314,14 +315,19 @@ func (ctx *Context) ReadConnectMessage(reader io.Reader, fh *FixedHeader, buf []
 				buf = buf[l:]
 			}
 		}
-
-		if !ctx.Auth(username, password) {
-			ctx.ConnAck(BAD_USER_OR_PASS)
-			return
-		}
 	}
 
-	ctx.ConnAck(ACCEPTED)
+	if ctx.server.handler != nil && ctx.server.handler.Connect(ctx, username, password) == nil {
+
+		ctx.ConnAck(ACCEPTED)
+	} else {
+
+		if !usernameFlag {
+			ctx.ConnAck(NOT_AUTHORIZED)
+		} else {
+			ctx.ConnAck(BAD_USER_OR_PASS)
+		}
+	}
 }
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -382,7 +388,7 @@ func (ctx *Context) ReadPublishMessage(reader io.Reader, fh *FixedHeader, buf []
 
 	if fh.qos == 0 { // QoS 0
 
-		ctx.publisher.Publish(&Message{topic, buf, 0, fh.retain})
+		ctx.server.Publish(ctx, &Message{topic, buf, 0, fh.retain})
 
 	} else { // QoS 1 or 2
 
@@ -397,7 +403,7 @@ func (ctx *Context) ReadPublishMessage(reader io.Reader, fh *FixedHeader, buf []
 
 		if fh.qos == 1 {
 
-			ctx.publisher.Publish(msg)
+			ctx.server.Publish(ctx, msg)
 
 			// send PUBACK message
 			buf := make([]byte, 4)
@@ -439,7 +445,7 @@ func (ctx *Context) ReadPubrelMessage(reader io.Reader, fh *FixedHeader, buf []b
 		return
 	}
 
-	ctx.publisher.Publish(msg)
+	ctx.server.Publish(ctx, msg)
 	delete(ctx.messages, mid)
 
 	// send PUBREC message
@@ -472,7 +478,6 @@ func (ctx *Context) ReadPubrecMessage(reader io.Reader, fh *FixedHeader, buf []b
 	ctx.Write(buf)
 }
 
-
 ///////////////////////////////////////////////////////////////////////////////
 
 // parse a PUBCOMP message
@@ -493,6 +498,5 @@ func (ctx *Context) ReadPubcompMessage(reader io.Reader, fh *FixedHeader, buf []
 	buf[3] = byte(mid & 0xff)
 	ctx.Write(buf)
 }
-
 
 //////////////////////////////////////////////////////////////////////////////

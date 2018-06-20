@@ -3,7 +3,6 @@ package mqtt
 import (
 	"fmt"
 	"io"
-	"log"
 )
 
 const (
@@ -14,48 +13,60 @@ const (
 )
 
 type Publisher interface {
-
 	Publish(msg *Message)
 }
 
 type SubscriptionHandler interface {
-
-	Subscribe(ctx *Context, topic string, qos byte) (*Subscription)
+	Subscribe(ctx *Context, topic string, qos byte) *Subscription
 	Unsubscribe(subs *Subscription)
 }
-
-
 
 type Context struct {
 	writer io.Writer
 	closer io.Closer
-	publisher Publisher
-	subsHandler SubscriptionHandler
+	server *Server
+	// publisher Publisher
+	// subsHandler SubscriptionHandler
 
-//	server   *Server
-	clientID string
+	//	server   *Server
+	ClientID string
 
 	state int
 
 	mid int
 
-	will *Message
+	Will *Message
 
 	messages map[int]*Message
 	subs     map[string]*Subscription
+	values   map[string]interface{}
 }
 
-func NewContext(w io.Writer, c io.Closer, p Publisher, s SubscriptionHandler) (*Context) {
+func NewContext(w io.Writer, c io.Closer, server *Server) *Context {
 
-	ctx := & Context{
-		writer: w,
-		closer: c,
-		publisher: p,
-		subsHandler: s,
+	ctx := &Context{
+		writer:   w,
+		closer:   c,
+		server:   server,
 		messages: make(map[int]*Message),
-		subs: make(map[string]*Subscription)}
+		values:   make(map[string]interface{}),
+		subs:     make(map[string]*Subscription)}
 
 	return ctx
+}
+
+func (ctx *Context) Get(key string) interface{} {
+
+	v, ok := ctx.values[key]
+	if ok {
+		return v
+	}
+	return nil
+}
+
+func (ctx *Context) Set(key string, value interface{}) {
+
+	ctx.values[key] = value
 }
 
 func (ctx *Context) Alive() bool {
@@ -76,13 +87,17 @@ func (ctx *Context) Close() error {
 
 		for _, sub := range ctx.subs {
 			//ctx.server
-			ctx.subsHandler.Unsubscribe(sub)
+			ctx.server.Unsubscribe(sub)
 		}
 
 		ctx.subs = nil
 
 		if ctx.closer != nil {
 			ctx.closer.Close()
+		}
+
+		if ctx.server.handler != nil {
+			ctx.server.handler.Disconnect(ctx)
 		}
 	}
 	return nil
@@ -95,8 +110,8 @@ func (ctx *Context) Fail(err error) error {
 		fmt.Println(err)
 		ctx.Close()
 
-		if ctx.will != nil {
-			ctx.publisher.Publish(ctx.will)
+		if ctx.Will != nil {
+			ctx.server.Publish(ctx, ctx.Will)
 		}
 	}
 
@@ -161,13 +176,6 @@ func (ctx *Context) ConnAck(code byte) {
 	}
 }
 
-func (ctx *Context) Auth(username, password string) bool {
-
-	log.Printf("Auth (user:%q pass:%q)\n", username, password)
-
-	return true
-}
-
 func (ctx *Context) Subscribe(topic string, qos byte) byte {
 
 	sub, ok := ctx.subs[topic]
@@ -176,7 +184,7 @@ func (ctx *Context) Subscribe(topic string, qos byte) byte {
 		//sub.ctx = ctx
 		//sub.qos = qos
 		//ctx.server.Subscribe(topic, sub)
-		sub = ctx.subsHandler.Subscribe(ctx, topic, qos)
+		sub = ctx.server.Subscribe(ctx, topic, qos)
 
 		if sub != nil {
 
@@ -199,30 +207,30 @@ func (ctx *Context) Publish(sub *Subscription, msg *Message) {
 
 	// qos = Min(sub.qos, msg.qos)
 	qos := sub.qos
-	if msg.qos < qos {
-		qos = msg.qos
+	if msg.QoS < qos {
+		qos = msg.QoS
 	}
 
 	switch qos {
 	case 0:
-		l := len(msg.topic)
-		head, vhead := Head(0x30|bool2byte(msg.retain), 2+l+len(msg.buf), 2+l)
+		l := len(msg.Topic)
+		head, vhead := Head(0x30|bool2byte(msg.retain), 2+l+len(msg.Buf), 2+l)
 		vhead[0] = byte(l >> 8)
 		vhead[1] = byte(l & 0xff)
-		copy(vhead[2:], msg.topic)
+		copy(vhead[2:], msg.Topic)
 		ctx.Write(head)
-		ctx.Write(msg.buf)
+		ctx.Write(msg.Buf)
 	case 1, 2:
-		l := len(msg.topic)
-		head, vhead := Head(0x32|(qos<<1)|bool2byte(msg.retain), 2+l+2+len(msg.buf), 2+l+2)
+		l := len(msg.Topic)
+		head, vhead := Head(0x32|(qos<<1)|bool2byte(msg.retain), 2+l+2+len(msg.Buf), 2+l+2)
 		vhead[0] = byte(l >> 8)
 		vhead[1] = byte(l & 0xff)
-		copy(vhead[2:], msg.topic)
+		copy(vhead[2:], msg.Topic)
 		ctx.mid++
 		vhead[2+l] = byte(ctx.mid >> 8)
 		vhead[2+l+1] = byte(ctx.mid & 0xff)
 		ctx.Write(head)
-		ctx.Write(msg.buf)
+		ctx.Write(msg.Buf)
 
 		//TODO store message and retry if timeout
 	}
@@ -232,7 +240,7 @@ func (ctx *Context) Unsubscribe(topic string) {
 
 	sub, ok := ctx.subs[topic]
 	if ok {
-		ctx.subsHandler.Unsubscribe(sub)
+		ctx.server.Unsubscribe(sub)
 	}
 }
 

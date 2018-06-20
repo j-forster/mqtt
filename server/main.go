@@ -2,54 +2,40 @@ package main
 
 import (
 	"log"
-	"net"
 
 	"github.com/j-forster/mqtt"
 	// "net/http"
 	//  _ "net/http/pprof"
-	"time"
 )
 
-func Server(address string) *mqtt.Server {
+type SimpleHandler struct{}
 
-	tcp, err := net.Listen("tcp", address)
-	if err != nil {
-		log.Panicln(err)
-	}
+func (h *SimpleHandler) Connect(ctx *mqtt.Context, username, password string) error {
 
-	server := mqtt.NewServer(tcp)
+	log.Printf("%v Connected: '%v' '%v'", ctx.ClientID, username, password)
+	return nil // no error == accept everyone
+}
 
-	log.Println("Up and running:", tcp.Addr())
+func (h *SimpleHandler) Disconnect(ctx *mqtt.Context) {
 
-	//go func() {
-	//	log.Println(http.ListenAndServe("localhost:6060", nil))
-	//}()
+	log.Printf("%v Disconnected", ctx.ClientID)
+}
 
-	go func() {
+func (h *SimpleHandler) Publish(ctx *mqtt.Context, msg *mqtt.Message) error {
 
-		for {
+	log.Printf("%v Publish: '%v' [%v]", ctx.ClientID, msg.Topic, len(msg.Buf))
+	return nil // no error == no message filter
+}
 
-			conn, err := tcp.Accept()
-			if err == nil {
+func (h *SimpleHandler) Subscribe(ctx *mqtt.Context, topic string, qos byte) error {
 
-				log.Println("Accepted", conn.RemoteAddr())
-				go mqtt.Join(conn, server, server)
-			} else {
-
-				log.Fatal(err)
-				break
-			}
-		}
-
-		log.Println("Bye!")
-	}()
-
-	return server
+	log.Printf("%v Subscribe: '%v'", ctx.ClientID, topic)
+	return nil // no error == no subscribe filter
 }
 
 func main() {
 
-	srv := Server(":1883")
-	srv.Run()
-	time.Sleep(time.Minute)
+	var handler SimpleHandler
+	log.Println("Up and running: Port 1883")
+	mqtt.ListenAndServe(":1883", &handler)
 }
