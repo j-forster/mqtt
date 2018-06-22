@@ -488,15 +488,7 @@ func (ctx *Context) ReadPubcompMessage(reader io.Reader, fh *FixedHeader, buf []
 		ctx.Fail(IncompleteMessage)
 		return
 	}
-	mid := int(buf[0])<<8 + int(buf[1])
-
-	// send PUBREL message
-	buf = make([]byte, 4)
-	buf[0] = 0x62 // PUBREL at qos 1
-	buf[1] = 0x02 // remaining length: 2
-	buf[2] = byte(mid >> 8)
-	buf[3] = byte(mid & 0xff)
-	ctx.Write(buf)
+	// mid := int(buf[0])<<8 + int(buf[1])
 }
 
 //////////////////////////////////////////////////////////////////////////////

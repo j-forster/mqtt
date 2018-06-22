@@ -222,7 +222,7 @@ func (ctx *Context) Publish(sub *Subscription, msg *Message) {
 		ctx.Write(msg.Buf)
 	case 1, 2:
 		l := len(msg.Topic)
-		head, vhead := Head(0x32|(qos<<1)|bool2byte(msg.retain), 2+l+2+len(msg.Buf), 2+l+2)
+		head, vhead := Head(0x30|(qos<<1)|bool2byte(msg.retain), 2+l+2+len(msg.Buf), 2+l+2)
 		vhead[0] = byte(l >> 8)
 		vhead[1] = byte(l & 0xff)
 		copy(vhead[2:], msg.Topic)
