@@ -20,7 +20,7 @@ var (
 	UnknownMessageID        = errors.New("unknown message id")
 )
 
-const maxMessageLength = 15360
+const maxMessageLength = 1024 * 1024 * 6
 
 // CONNACK return codes
 const (

@@ -135,7 +135,7 @@ func Head(b0 byte, length int, total int) ([]byte, []byte) {
 	if length < 0x8000 {
 		buf := make([]byte, 3+total)
 		buf[0] = b0
-		buf[1] = byte(length & 127)
+		buf[1] = byte(length&127) | 0x80
 		buf[2] = byte(length >> 7)
 		return buf, buf[3:]
 	}
@@ -143,8 +143,8 @@ func Head(b0 byte, length int, total int) ([]byte, []byte) {
 	if length < 0x800000 {
 		buf := make([]byte, 4+total)
 		buf[0] = b0
-		buf[1] = byte(length & 127)
-		buf[2] = byte((length >> 7) & 127)
+		buf[1] = byte(length&127) | 0x80
+		buf[2] = byte((length>>7)&127) | 0x80
 		buf[3] = byte(length >> 14)
 		return buf, buf[4:]
 	}
@@ -152,9 +152,9 @@ func Head(b0 byte, length int, total int) ([]byte, []byte) {
 	if length < 0x80000000 {
 		buf := make([]byte, 5+total)
 		buf[0] = b0
-		buf[1] = byte(length & 127)
-		buf[2] = byte((length >> 7) & 127)
-		buf[3] = byte((length >> 14) & 127)
+		buf[1] = byte(length&127) | 0x80
+		buf[2] = byte((length>>7)&127) | 0x80
+		buf[3] = byte((length>>14)&127) | 0x80
 		buf[4] = byte(length >> 21)
 		return buf, buf[5:]
 	}
